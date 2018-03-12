@@ -38,7 +38,7 @@ def get_return_periods_as_csv(input_dir, output_dir, watershed_name):
     df = df.transpose()
 
     # creates filename and header
-    filename = '-'.join(['return_periods', watershed_name])
+    filename = '-'.join([watershed_name, 'return_periods.csv'])
     header = ['return_2', 'return_10', 'return_20', 'return_max']
 
     # exports dataframe as csv
@@ -52,6 +52,5 @@ if __name__ == "__main__":
     get_return_periods_as_csv(
         input_dir='/home/byuhi/era_interim/south_asia-mainland',
         output_dir='/home/byuhi/rapid-io/output/south_asia-mainland',
-        watershed_name='south_asia'
+        watershed_name='south_asia-mainland'
     )
-
