@@ -11,23 +11,25 @@
 #################################################################
 
 import os
+import sys
+import multiprocessing as mp
 import subprocess as sp
 import netCDF4 as nc
 import datetime as dt
 import numpy as np
 import pandas as pd
+import logging
 
 
 def extract_summary_table(workspace):
     # calls NCO's nces function to calculate ensemble statistics for the max, mean, and min
     for stat in ['max', 'avg', 'min']:
-        findstr = 'find "{0}" -name Qout*.nc'.format(workspace)
-        filename = os.path.join(workspace, 'nces.{0}.nc'.format(stat))
-        ncesstr = "nces -O --op_typ={0} {1}".format(stat, filename)
-        args = ' | '.join([findstr, ncesstr])
-
+        findstr = 'find {0} -name "Qout*.nc"'.format(workspace)
+	filename = os.path.join(workspace, 'nces.{0}.nc'.format(stat))
+        ncesstr = "/home/byuhi/miniconda2/bin/nces -O --op_typ={0} {1}".format(stat, filename)
+	args = ' | '.join([findstr, ncesstr])
         sp.call(args, shell=True)
-
+    
     # creates list with the stat netcdf files created in the previous step
     nclist = []
     for file in os.listdir(workspace):
@@ -47,85 +49,90 @@ def extract_summary_table(workspace):
         lines.pop(0)
         for line in lines:
             d[line.split(',')[0]] = line.split(',')[1:4]
-
+    
     # creates a csv file to store statistics
-    with open(os.path.join(workspace, file_name), 'wb') as f:
-        # writes header
-        f.write('id,watershed,subbasin,comid,return2,return10,return20,index,timestamp,max,mean,min,style,flow_class\n')
+    try:
+        with open(os.path.join(workspace, file_name), 'wb') as f:
+            # writes header
+#            f.write('id,watershed,subbasin,comid,return2,return10,return20,index,timestamp,max,mean,min,style,flow_class\n')
 
-        # extracts forecast COMIDS and formatted dates into lists
-        comids = nc.Dataset(nclist[0], 'r').variables['rivid'][:].tolist()
-        rawdates = nc.Dataset(nclist[0], 'r').variables['time'][:].tolist()
-        dates = []
-        for date in rawdates:
-            dates.append(dt.datetime.utcfromtimestamp(date).strftime("%m/%d/%y %H:%M"))
+            # extracts forecast COMIDS and formatted dates into lists
+            comids = nc.Dataset(nclist[0], 'r').variables['rivid'][:].tolist()
+            rawdates = nc.Dataset(nclist[0], 'r').variables['time'][:].tolist()
+            dates = []
+            for date in rawdates:
+                dates.append(dt.datetime.utcfromtimestamp(date).strftime("%m/%d/%y %H:%M"))
 
-        # creates empty lists with forecast stats
-        maxlist = []
-        meanlist = []
-        minlist = []
+            # creates empty lists with forecast stats
+            maxlist = []
+            meanlist = []
+            minlist = []
 
-        # loops through the stat netcdf files to populate lists created above
-        for ncfile in sorted(nclist):
-            res = nc.Dataset(ncfile, 'r')
+            # loops through the stat netcdf files to populate lists created above
+            for ncfile in sorted(nclist):
+                res = nc.Dataset(ncfile, 'r')
 
-            # loops through COMIDs with netcdf files
+                # loops through COMIDs with netcdf files
+                for index, comid in enumerate(comids):
+                    if 'max' in ncfile:
+                        maxlist.append(res.variables['Qout'][index, 0:49].tolist())
+                    elif 'avg' in ncfile:
+                        meanlist.append(res.variables['Qout'][index, 0:49].tolist())
+                    elif 'min' in ncfile:
+                        minlist.append(res.variables['Qout'][index, 0:49].tolist())
+
+            # creates step order list
+            step_order = range(1,50)
+#           step_order = range(1, 200)
+
+            # creates watershed and subbasin names
+            watershed_name = full_name.split('-')[0]
+            subbasin_name = full_name.split('-')[1]
+
+            # creates unique id
+            count = 1
+
+            # loops through COMIDs again to add rows to csv file
             for index, comid in enumerate(comids):
-                if 'max' in ncfile:
-                    maxlist.append(res.variables['Qout'][index].tolist())
-                elif 'avg' in ncfile:
-                    meanlist.append(res.variables['Qout'][index].tolist())
-                elif 'min' in ncfile:
-                    minlist.append(res.variables['Qout'][index].tolist())
+                for step, date, max, mean, min in zip(step_order, dates, maxlist[index], meanlist[index], minlist[index]):
+                    # define style
+            	    if mean > float(d[str(comid)][2]):
+                        style = 'purple'
+                    elif mean > float(d[str(comid)][1]):
+                        style = 'red'
+                    elif mean > float(d[str(comid)][0]):
+                        style = 'yellow'
+                    else:
+                        style = 'blue'
 
-        # creates step order list
-        step_order = range(1, 200)
+                    # define flow_class
+                    if mean < 20:
+                        flow_class = '1'
+                    elif mean >= 20 and mean < 250:
+                        flow_class = '2'
+                    elif mean >= 250 and mean < 1500:
+                        flow_class = '3'
+                    elif mean >= 1500 and mean < 10000:
+                        flow_class = '4'
+                    elif mean >= 10000 and mean <30000:
+                        flow_class = '5'
+                    else:
+                        flow_class = '6'
 
-        # creates watershed and subbasin names
-        watershed_name = full_name.split('-')[0]
-        subbasin_name = full_name.split('-')[1]
+                    f.write(','.join([str(count), watershed_name, subbasin_name, str(comid), d[str(comid)][0],
+                                      d[str(comid)][1], d[str(comid)][2], str(step), date, str(max), str(mean),
+                                      str(min), style, flow_class + '\n']))
+                    count += 1
 
-        # creates unique id
-        count = 1
-
-        # loops through COMIDs again to add rows to csv file
-        for index, comid in enumerate(comids):
-            for step, date, max, mean, min in zip(step_order, dates, maxlist[index], meanlist[index], minlist[index]):
-                # define style
-                if mean > float(d[str(comid)][2]):
-                    style = 'purple'
-                elif mean > float(d[str(comid)][1]):
-                    style = 'red'
-                elif mean > float(d[str(comid)][0]):
-                    style = 'yellow'
-                else:
-                    style = 'blue'
-
-                # define flow_class
-                if mean < 20:
-                    flow_class = '1'
-                elif mean >= 20 and mean < 250:
-                    flow_class = '2'
-                elif mean >= 250 and mean < 1500:
-                    flow_class = '3'
-                elif mean >= 1500 and mean < 10000:
-                    flow_class = '4'
-                elif mean >= 10000 and mean <30000:
-                    flow_class = '5'
-                else:
-                    flow_class = '6'
-
-                f.write(','.join([str(count), watershed_name, subbasin_name, str(comid), d[str(comid)][0],
-                                  d[str(comid)][1], d[str(comid)][2], str(step), date, str(max), str(mean),
-                                  str(min), style, flow_class + '\n']))
-                count += 1
-
-    return ('Stat Success')
+        return ('Stat Success')
+    except Exception as e:
+	logging.debug(e)
 
 
 # function to take a given csv and interpolate all time series in it
 def interpolate_table(path):
     # importing the table
+    print 'working on interpolation'
     df = pd.read_csv(path, index_col=8)
     interpolated_df = pd.DataFrame([])
     if len(df.index) % 85 == 0:
@@ -208,29 +215,33 @@ if __name__ == "__main__":
     # output directory
     workdir = '/home/byuhi/rapid-io/output/'
 
-    # list of summary table paths
-    interpolation_list = []
-
     # list of watersheds
     watersheds = [os.path.join(workdir, d) for d in os.listdir(workdir) if os.path.isdir(os.path.join(workdir, d))]
 
-    # run summary table
-    for watershed in watersheds:
-        # list of available dates per watershed
-        dates = [os.path.join(watershed, d) for d in os.listdir(watershed) if os.path.isdir(os.path.join(watershed, d))]
-        for date in dates:
-            extract_summary_table(
-                workspace=date
-            )
+    dates = []
+    exclude_list = ['dominican_republic', 'middle_east', 'europe', 'north_asia']
+    for i in range(len(watersheds)):
+	for d in os.listdir(watersheds[i]):
+	    if not any(excluded in watersheds[i] for excluded in exclude_list) and os.path.isdir(os.path.join(watersheds[i], d)):
+	        dates.append(os.path.join(watersheds[i], d))
 
-            # populate interpolation list
-            date_list = os.listdir(date)
-            for file in date_list:
-                if file.startswith("summary_table"):
-                    interpolation_list.append(os.path.join(date, file))
+    logging.basicConfig(filename='/home/byuhi/temp.log', level=logging.DEBUG)
 
-    # run interpolation
-    for csv_path in interpolation_list:
-        interpolate_table(
-            path=csv_path
-        )
+    pool = mp.Pool()
+    results = pool.map(extract_summary_table, dates)
+
+    pool.close()
+    pool.join()
+    logging.debug('Finished')
+
+#            # populate interpolation list
+#            date_list = os.listdir(date)
+#            for file in date_list:
+#                if file.startswith("summary_table"):
+#                    interpolation_list.append(os.path.join(date, file))
+#
+#    # run interpolation
+#    for csv_path in interpolation_list:
+#        interpolate_table(
+#            path=csv_path
+#        )

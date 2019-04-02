@@ -50,7 +50,7 @@ def get_return_periods_as_csv(input_dir, output_dir, watershed_name):
 # runs function on file execution
 if __name__ == "__main__":
     get_return_periods_as_csv(
-        input_dir='/home/byuhi/era_interim/south_asia-mainland',
-        output_dir='/home/byuhi/rapid-io/output/south_asia-mainland',
-        watershed_name='south_asia-mainland'
+        input_dir='/home/byuhi/era_interim/europe-global',
+        output_dir='/home/byuhi/rapid-io/output/europe-global',
+        watershed_name='europe-global'
     )
