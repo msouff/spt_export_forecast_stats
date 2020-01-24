@@ -119,9 +119,9 @@ def extract_summary_table(workspace):
                     else:
                         flow_class = '6'
 
-                    f.write(','.join([str(count), watershed_name, subbasin_name, str(comid), d[str(comid)][0],
-                                      d[str(comid)][1], d[str(comid)][2], str(step), date, str(max), str(mean),
-                                      str(min), style, flow_class + '\n']))
+                    f.write(','.join([str(comid),
+                                      date, str(max), str(mean),
+                                      style, flow_class + '\n']))
                     count += 1
 
         return ('Stat Success')
